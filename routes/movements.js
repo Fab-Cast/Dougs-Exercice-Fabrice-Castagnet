@@ -51,7 +51,7 @@ router.post('/validation', [
         return res.status(418).json({ reasons: "Il y a un écart sur les mois suivants", deltaList: movementDelta })
     }
 
-    res.status(200).json(req.body.movements)
+    res.status(200).send("OK : Aucun écart détecté")
 
 })
 
