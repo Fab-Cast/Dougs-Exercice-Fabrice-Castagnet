@@ -15,17 +15,17 @@ router.post('/validation', [
     check("balances.*.balance").not().isEmpty().isNumeric().toFloat(),
 ], (req, res) => {
 
-    // Liste des mois+année unique des movements
-    const movementDateList = [...new Set(req.body.movements.map(item => moment(item.date).format('YYYY-MM')))]
-
-    // Liste des mois+année unique des balances
-    const balanceDateList = [...new Set(req.body.balances.map(item => moment(item.date).format('YYYY-MM')))]
-
     // Si il y a des erreurs de format de document, on retourne le code 422
     const errors = validationResult(req)
     if (!errors.isEmpty()) {
         return res.status(422).json({ errors: errors.array() })
     }
+
+    // Liste des mois+année unique des movements
+    const movementDateList = [...new Set(req.body.movements.map(item => moment(item.date).utc().format('YYYY-MM')))]
+    
+    // Liste des mois+année unique des balances
+    const balanceDateList = [...new Set(req.body.balances.map(item => moment(item.date).utc().format('YYYY-MM')))]
 
     // Vérification des doublons dans Movements (basé sur l'ID uniquement)
     const duplicateIdMovementsList = getDuplicate(req.body.movements, 'id')
@@ -67,57 +67,61 @@ function getDuplicate(arr, val) {
 function getDuplicateMovementList(movementList) {
     let doublons = []
     let doublonsString = []
-    movementList.map(mov => {
-        let copyMov = Object.assign({}, mov)
-        delete copyMov['id']
-        if (doublonsString.includes(JSON.stringify(copyMov))) {
-            let found = doublons.find(d => JSON.stringify(d.movement) === JSON.stringify(copyMov))
+    movementList.forEach((mov) => {
+        const {id, ...noIdMov} = mov
+        if (doublonsString.includes(JSON.stringify(noIdMov))) {
+            let found = doublons.find(d => JSON.stringify(d.movement) === JSON.stringify(noIdMov))
             found.duplicateId.push(mov.id)
         } else {
-            doublonsString.push(JSON.stringify(copyMov))
-            doublons.push({ duplicateId: [mov.id], movement: copyMov })
+            doublonsString.push(JSON.stringify(noIdMov))
+            doublons.push({ duplicateId: [mov.id], movement: noIdMov })
         }
     })
     return doublons.filter(d => d.duplicateId.length > 1)
 }
 
 function getMissingBalance(movementList, balanceDateList) {
+
     let balanceDateMissing = []
-    movementList.map(mov => {
-        let movDateString = moment(mov.date).format('YYYY-MM')
+    movementList.forEach((mov) => {
+        let movDateString = moment(mov.date).utc().format('YYYY-MM')
+        console.log('-----movDateString')
+        console.log(movDateString)
         if (balanceDateList.indexOf(movDateString) === -1) {
-            balanceDateMissing.push(moment(mov.date).format('YYYY-MM'))
+            balanceDateMissing.push(moment(mov.date).utc().format('YYYY-MM'))
         }
     })
     return [...new Set(balanceDateMissing)]
 }
 
 function getMovementDelta(body, movementDateList) {
+    
     let deltaList = []
-    for (let movDate of movementDateList) {
+    movementDateList.forEach((movDate) => {
 
         // Liste des movements du même mois+année
         let sameMovDate = body.movements.filter(mov => {
-            return moment(mov.date).format('YYYY-MM') == movDate
+            return moment(mov.date).utc().format('YYYY-MM') == movDate
         })
 
         // Somme de toutes les opérations (movement.amount) du même mois
         let sameMovDateSum = sameMovDate.map(item => item.amount).reduce((prev, curr) => prev + curr, 0)
 
         // récupérer la balance du même mois
-        let balance = body.balances.find(bal => moment(bal.date).format('YYYY-MM') === movDate)
+        let balance = body.balances.find(bal => moment(bal.date).utc().format('YYYY-MM') === movDate)
 
         // Si le montant est différent
         if (balance.balance != sameMovDateSum) {
-            delta = sameMovDateSum - balance.balance
+            let delta = sameMovDateSum - balance.balance
             deltaList.push({
-                "date": moment(balance.date).format('YYYY-MM'),
+                "date": moment(balance.date).utc().format('YYYY-MM'),
                 "balance-transactions": sameMovDateSum,
                 "balance-releves": balance.balance,
                 "delta": delta
             })
         }
-    }
+    })
+
     return deltaList
 }
 
